@@ -94,7 +94,8 @@ async function readDatagrams(transport) {
     addToEventLog('Receiving datagrams not supported: ' + e, 'error');
     return;
   }
-  let decoder = new TextDecoder('utf-8');
+  // let decoder = new TextDecoder('utf-8');
+  let n = 0;
   try {
     while (true) {
       const { value, done } = await reader.read();
@@ -102,8 +103,13 @@ async function readDatagrams(transport) {
         addToEventLog('Done reading datagrams!');
         return;
       }
-      let data = decoder.decode(value);
-      addToEventLog('Datagram received: ' + data);
+      // let data = decoder.decode(value);
+      console.log(++n, value);
+      if (n === 100) {
+        n = 0;
+        await currentTransportDatagramWriter.write(new Uint8Array([1]));
+      }
+// addToEventLog('Datagram received: ');
     }
   } catch (e) {
     addToEventLog('Error while reading datagrams: ' + e, 'error');
@@ -131,16 +137,17 @@ async function acceptUnidirectionalStreams(transport) {
 
 async function readFromIncomingStream(stream, number) {
   let decoder = new TextDecoderStream('utf-8');
-  let reader = stream.pipeThrough(decoder).getReader();
+  let reader = (stream.readable || stream).pipeThrough(decoder).getReader();
   try {
     while (true) {
-      const { value, done } = await reader.read();
+    const { value, done } = await reader.read();
       if (done) {
         addToEventLog('Stream #' + number + ' closed');
         return;
       }
       let data = value;
-      addToEventLog('Received data on stream #' + number + ': ' + data);
+      console.log(data);
+      addToEventLog('Received data on stream #' + number);
     }
   } catch (e) {
     addToEventLog(
