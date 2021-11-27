@@ -34,6 +34,7 @@ async function connect() {
   streamNumber = 1;
   try {
     currentTransportDatagramWriter = transport.datagrams.writable.getWriter();
+    console.log(transport.datagrams);
     addToEventLog('Datagram writer ready.');
   } catch (e) {
     addToEventLog('Sending datagrams not supported: ' + e, 'error');
@@ -56,6 +57,7 @@ async function sendData() {
     switch (form.sendtype.value) {
       case 'datagram':
         await currentTransportDatagramWriter.write(data);
+       // await currentTransportDatagramWriter.close();
         addToEventLog('Sent datagram: ' + rawData);
         break;
       case 'unidi': {
@@ -105,10 +107,12 @@ async function readDatagrams(transport) {
       }
       // let data = decoder.decode(value);
       console.log(++n, value);
+      /*
       if (n === 100) {
         n = 0;
         await currentTransportDatagramWriter.write(new Uint8Array([1]));
       }
+      */
 // addToEventLog('Datagram received: ');
     }
   } catch (e) {
