@@ -76,14 +76,6 @@ This will output "13" (the length of "Hello, world!") into the console.
 
 from random import choice
 from string import digits
-import itertools
-
-import sys
-import json
-import struct
-import os
-import subprocess
-from shlex import split
 
 import argparse
 import asyncio
@@ -95,7 +87,7 @@ from aioquic.asyncio import QuicConnectionProtocol, serve
 from aioquic.h3.connection import H3_ALPN, H3Connection, Setting
 from aioquic.h3.events import H3Event, HeadersReceived, WebTransportStreamDataReceived, DatagramReceived
 from aioquic.quic.configuration import QuicConfiguration
-from aioquic.quic.connection import stream_is_unidirectional, QuicConnection, END_STATES
+from aioquic.quic.connection import stream_is_unidirectional
 from aioquic.quic.events import ProtocolNegotiated, StreamReset, QuicEvent
 
 BIND_ADDRESS = '::1'
@@ -121,6 +113,7 @@ class H3ConnectionWithDatagram(H3Connection):
     # extended CONNECT methods.
     def _get_local_settings(self) -> Dict[int, int]:
         settings = super()._get_local_settings()
+        print(settings)
         settings[H3_DATAGRAM_05] = 1
         settings[ENABLE_CONNECT_PROTOCOL] = 1
         return settings
@@ -137,74 +130,38 @@ class H3ConnectionWithDatagram(H3Connection):
 #     datagram that was just received.
 class CounterHandler:
 
-    def __init__(self, session_id, http: H3ConnectionWithDatagram) -> None:
-        print(self)
+    def __init__(self, session_id, http: H3ConnectionWithDatagram, connection: QuicConnectionProtocol) -> None:
         self._session_id = session_id
         self._http = http
+        self.connection = connection
         self._counters = defaultdict(int)
+                    print(event.data, dir(self._http), dir(self._http._quic), dir(self.connection))
 
     def h3_event_received(self, event: H3Event) -> None:
         if isinstance(event, DatagramReceived):
             # payload = str(len(event.data)).encode('ascii')
-            # self._http.send_datagram(self._session_id, payload)
-            def to_infinity():
-                index = 0
-                cmd = 'parec', '-d', 'alsa_output.pci-0000_00_14.2.analog-stereo.monitor'
-                process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-                # process = subprocess.Popen(split(receivedMessage), stdout=subprocess.PIPE)
-                os.set_blocking(process.stdout.fileno(), False)
-                for chunk in iter(lambda: process.stdout.read(512), b''):
-                    if chunk is not None:
-                       # encoded = str([int('%02X' % i, 16) for i in chunk])
-                        yield [index, chunk]
-                        index += 1
-                        # if index == 100:
-                        #    break
-
-            for [i, encoded] in to_infinity():
-                print(i)
-                self._http.send_datagram(self._session_id, encoded) 
-                if i == 100:
-                    break
-              #  self.transmit()
-            #self._http.send_datagram(self._session_id, b'b') 
-            #self._http.send_datagram(self._session_id, b'c') 
+            print(event.data)
+            for i in range(4096):
+                # str(i).encode() + str(': ').encode() + 
+                d = ''.join(choice(digits) for j in range(512)).encode()
+                # p = ''.join(choice(digits) for j in range(512)).encode()
+                self._http.send_datagram(self._session_id, d)
+                self.connection.transmit()
         if isinstance(event, WebTransportStreamDataReceived):
-            print(self._http._quic)
-            if event.data != b'':
-                print(event.data, self._http)
-                for i in range(16):
-                    self._http._quic.send_stream_data(
-                        event.stream_id, ''.join(choice(digits) for i in range(512)).encode(), end_stream=False)
-                    # self._http._quic.transmit()
-                '''
+            for i in range(4096):
+                # str(i).encode() + str(': ').encode() + 
+                d = str(i).encode() #+ str(': ').encode() + ''.join(choice(digits) for j in range(512)).encode()
                 self._http._quic.send_stream_data(
-                    event.stream_id, b'-----', end_stream=False)
-                self._http._quic.send_stream_data(
-                    event.stream_id, ''.join(choice(digits) for i in range(512)).encode('ascii'), end_stream=False)
-                self._http._quic.send_stream_data(
-                    event.stream_id, b'-----', end_stream=False)
-                self._http._quic.send_stream_data(
-                    event.stream_id, ''.join(choice(digits) for i in range(512)).encode('ascii'), end_stream=False)
-                '''
-                '''
-                for c in iter(lambda: ''.join(choice(digits) for i in range(512)).encode('ascii'), b''):  # replace '' with b'' for Python 3
-                    if c is not None:
-                        self._http._quic.send_stream_data(
-                            event.stream_id, c, end_stream=False)                        
-                        print(c)
-                        break
-                '''
-            self._counters[event.stream_id] += len(event.data)
+                        event.stream_id, d, end_stream=False)
             if event.stream_ended:
                 if stream_is_unidirectional(event.stream_id):
                     response_id = self._http.create_webtransport_stream(
                         self._session_id, is_unidirectional=True)
                 else:
                     response_id = event.stream_id
-                payload = str(self._counters[event.stream_id]).encode('ascii')
+                print(response_id)
                 self._http._quic.send_stream_data(
-                    response_id, payload, end_stream=True)
+                    response_id, b' Done', end_stream=True)
                 self.stream_closed(event.stream_id)
 
     def stream_closed(self, stream_id: int) -> None:
@@ -223,7 +180,6 @@ class WebTransportProtocol(QuicConnectionProtocol):
         super().__init__(*args, **kwargs)
         self._http: Optional[H3ConnectionWithDatagram] = None
         self._handler: Optional[CounterHandler] = None
-        self._ack_waiter: Optional[asyncio.Future[None]] = None
 
     def quic_event_received(self, event: QuicEvent) -> None:
         if isinstance(event, ProtocolNegotiated):
@@ -264,7 +220,7 @@ class WebTransportProtocol(QuicConnectionProtocol):
             return
         if path == b"/counter":
             assert(self._handler is None)
-            self._handler = CounterHandler(stream_id, self._http)
+            self._handler = CounterHandler(stream_id, self._http, self)
             self._send_response(stream_id, 200)
         else:
             self._send_response(stream_id, 404, end_stream=True)
@@ -289,7 +245,7 @@ if __name__ == '__main__':
     configuration = QuicConfiguration(
         alpn_protocols=H3_ALPN,
         is_client=False,
-        max_datagram_frame_size=65536
+        max_datagram_frame_size=65536,
     )
     configuration.load_cert_chain(args.certificate, args.key)
 
