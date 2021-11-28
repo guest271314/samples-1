@@ -62,7 +62,7 @@ async function sendData() {
         let stream = await transport.createUnidirectionalStream();
         let writer = stream.getWriter();
         await writer.write(data);
-        await writer.close();
+        
         addToEventLog('Sent a unidirectional stream with data: ' + rawData);
         break;
       }
@@ -94,8 +94,8 @@ async function readDatagrams(transport) {
     addToEventLog('Receiving datagrams not supported: ' + e, 'error');
     return;
   }
-  // let decoder = new TextDecoder('utf-8');
   let n = 0;
+  let stream_id = 0;
   try {
     while (true) {
       const { value, done } = await reader.read();
@@ -105,11 +105,11 @@ async function readDatagrams(transport) {
       }
       // let data = decoder.decode(value);
       console.log(++n, value);
-      if (n === 100) {
+      if (n === 128) {
         n = 0;
-        await currentTransportDatagramWriter.write(new Uint8Array([1]));
+        currentTransportDatagramWriter.write(new Uint8Array([++stream_id]));
       }
-// addToEventLog('Datagram received: ');
+      // addToEventLog('Datagram received: ' + data);
     }
   } catch (e) {
     addToEventLog('Error while reading datagrams: ' + e, 'error');
@@ -140,14 +140,14 @@ async function readFromIncomingStream(stream, number) {
   let reader = (stream.readable || stream).pipeThrough(decoder).getReader();
   try {
     while (true) {
-    const { value, done } = await reader.read();
+      const { value, done } = await reader.read();
       if (done) {
         addToEventLog('Stream #' + number + ' closed');
         return;
       }
       let data = value;
       console.log(data);
-      addToEventLog('Received data on stream #' + number);
+      // addToEventLog('Received data on stream #' + number + ': ' + data);
     }
   } catch (e) {
     addToEventLog(
